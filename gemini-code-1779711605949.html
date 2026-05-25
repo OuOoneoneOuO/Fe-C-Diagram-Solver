@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鐵碳平衡圖相變化與強度計算系統</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #34495e;
+            --accent-color: #3498db;
+            --bg-color: #ecf0f1;
+            --card-bg: #ffffff;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            text-align: center;
+            color: var(--primary-color);
+        }
+        .card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            background-color: var(--accent-color);
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .result-section {
+            display: none;
+            border-left: 5px solid var(--accent-color);
+            padding-left: 15px;
+            margin-top: 20px;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 0 5px 5px 0;
+        }
+        .result-item {
+            margin-bottom: 10px;
+        }
+        .result-label {
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+        .note {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-top: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>鐵碳平衡圖分析系統</h1>
+    
+    <div class="card">
+        <h2>輸入參數 (C < 6.67%)</h2>
+        <div class="input-group">
+            <label for="carbonInput">初始碳含量 Co (wt%):</label>
+            <input type="number" id="carbonInput" step="0.01" min="0" max="6.67" placeholder="例如: 0.4">
+        </div>
+        <div class="input-group">
+            <label for="tempInput">溫度 T (°C):</label>
+            <input type="number" id="tempInput" step="1" min="20" max="1600" placeholder="例如: 700">
+        </div>
+        <button onclick="calculatePhase()">開始計算</button>
+    </div>
+
+    <div class="card result-section" id="resultCard">
+        <h2>計算結果</h2>
+        
+        <div class="result-item">
+            <span class="result-label">1. 所在相區與說明:</span>
+            <p id="resRegion">-</p>
+        </div>
+        
+        <div class="result-item">
+            <span class="result-label">2. 該區域的相成分 (Composition):</span>
+            <p id="resPhaseComp">-</p>
+        </div>
+        
+        <div class="result-item">
+            <span class="result-label">3. 該區域的相分率 (Weight Fraction, W%):</span>
+            <p id="resWeightFrac">-</p>
+        </div>
+        
+        <div class="result-item">
+            <span class="result-label">4. 預估鋼材機械強度 (僅適用於常溫冷卻後):</span>
+            <p id="resStrength">-</p>
+        </div>
+    </div>
+
+    <p class="note">*本系統採用鐵碳平衡圖之簡化線性邊界模型（如共析點 0.76% C, 727°C）。機械強度為碳鋼之經驗估算值。</p>
+
+    <script>
+        function calculatePhase() {
+            const Co = parseFloat(document.getElementById('carbonInput').value);
+            const T = parseFloat(document.getElementById('tempInput').value);
+
+            if (isNaN(Co) || isNaN(T) || Co < 0 || Co > 6.67) {
+                alert("請輸入有效的數值！碳含量需介於 0 至 6.67 之間。");
+                return;
+            }
+
+            let region = "";
+            let description = "";
+            let phaseComp = "";
+            let weightFrac = "";
+            let strength = "無法估算（通常於常溫評估）";
+
+            // --- 1. 相區判斷與計算 (採用簡化邊界模型) ---
+            if (T < 727) {
+                // 共析溫度以下 (室溫 ~ 727°C)
+                if (Co <= 0.022) {
+                    region = "α (Ferrite)";
+                    description = "肥粒鐵：碳在BCC鐵中的固溶體";
+                    phaseComp = `C_α ≈ ${Co}% (單相)`;
+                    weightFrac = `W_α = 100%`;
+                } else {
+                    region = "α + Fe3C";
+                    description = "肥粒鐵 (Ferrite) 與 雪明碳鐵 (Cementite) 的兩相混合區";
+                    
+                    // 根據 Tie-line 找出兩端點 (簡化 α 溶解度為 0.022%，Fe3C 為 6.67%)
+                    const C_alpha = 0.022;
+                    const C_Fe3C = 6.67;
+                    
+                    phaseComp = `C_α = ${C_alpha}% , C_Fe3C = ${C_Fe3C}%`;
+                    
+                    // 槓桿原理計算重量百分率
+                    const W_alpha = ((C_Fe3C - Co) / (C_Fe3C - C_alpha)) * 100;
+                    const W_Fe3C = ((Co - C_alpha) / (C_Fe3C - C_alpha)) * 100;
+                    
+                    weightFrac = `W_α = ${W_alpha.toFixed(2)}% , W_Fe3C = ${W_Fe3C.toFixed(2)}%`;
+                }
+            } else if (T >= 727 && T < 1147) {
+                // 奧斯田鐵區域 (簡化判斷)
+                // 粗略線性邊界: 727°C(0.76%C) 到 1147°C(2.14%C)
+                let gammaBoundary = 0.76 + ((T - 727) / (1147 - 727)) * (2.14 - 0.76);
+                
+                if (Co <= gammaBoundary && Co >= 0.022) {
+                    region = "γ (Austenite)";
+                    description = "沃斯田鐵：碳在FCC鐵中的固溶體";
+                    phaseComp = `C_γ ≈ ${Co}% (單相)`;
+                    weightFrac = `W_γ = 100%`;
+                } else if (Co > gammaBoundary) {
+                    region = "γ + Fe3C";
+                    description = "沃斯田鐵與雪明碳鐵的兩相混合區";
+                    const C_gamma = gammaBoundary;
+                    const C_Fe3C = 6.67;
+                    
+                    phaseComp = `C_γ = ${C_gamma.toFixed(2)}% , C_Fe3C = ${C_Fe3C}%`;
+                    
+                    const W_gamma = ((C_Fe3C - Co) / (C_Fe3C - C_gamma)) * 100;
+                    const W_Fe3C = ((Co - C_gamma) / (C_Fe3C - C_gamma)) * 100;
+                    
+                    weightFrac = `W_γ = ${W_gamma.toFixed(2)}% , W_Fe3C = ${W_Fe3C.toFixed(2)}%`;
+                } else {
+                    region = "α + γ";
+                    description = "肥粒鐵與沃斯田鐵過渡區";
+                    phaseComp = "需依精確曲線計算";
+                    weightFrac = "需依精確曲線計算";
+                }
+            } else {
+                 region = "液態 (Liquid) 或含液相混合區";
+                 description = "溫度超過 1147°C，涉及液相 (L) 變化";
+                 phaseComp = "高溫狀態，液相成分隨溫度變化";
+                 weightFrac = "依 Tie-line 對應液態相界計算";
+            }
+
+            // --- 2. 鋼鐵機械強度估算 ---
+            // 強度主要由常溫下的含碳量決定 (適用於亞共析鋼及部分過共析鋼)
+            if (Co <= 0.8) {
+                // 經驗公式：純鐵抗拉約 280 MPa，隨波來鐵比例增加而上升
+                const TS = 280 + (Co / 0.76) * (800 - 280); 
+                const YS = TS * 0.6; // 降伏強度約為抗拉強度的 0.6 倍
+                strength = `估計降伏強度 (Yield): ${YS.toFixed(0)} MPa<br>估計抗拉強度 (Tensile): ${TS.toFixed(0)} MPa`;
+            } else if (Co > 0.8 && Co <= 2.14) {
+                // 過共析鋼，雪明碳鐵網狀析出導致脆化，抗拉強度微降或持平
+                const TS = 800 - ((Co - 0.8) * 100); 
+                const YS = TS * 0.65;
+                strength = `估計降伏強度 (Yield): ${YS.toFixed(0)} MPa<br>估計抗拉強度 (Tensile): ${TS.toFixed(0)} MPa`;
+            } else {
+                strength = "鑄鐵範圍 (C > 2.14%)，強度受石墨形態(如灰鑄鐵/球化鑄鐵)影響極大，無法單憑碳含量準確估算。";
+            }
+
+            // --- 3. 顯示結果 ---
+            document.getElementById('resRegion').innerHTML = `<strong>${region}</strong><br>${description}`;
+            document.getElementById('resPhaseComp').innerHTML = phaseComp;
+            document.getElementById('resWeightFrac').innerHTML = weightFrac;
+            document.getElementById('resStrength').innerHTML = strength;
+            
+            document.getElementById('resultCard').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
